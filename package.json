@@ -1,0 +1,12 @@
+{
+  "name": "firstore",
+  "version": "1.0.0",
+  "main": "src/index.js",
+  "author": "zzc6332",
+  "license": "MIT",
+  "description": "A global state management tool for mini-programs, Vue, React, etc.",
+  "scripts": {
+    "cs": "node ./demo/crayonShinchanStore.js",
+    "msc": "node ./demo/musicStore.js"
+  }
+}
