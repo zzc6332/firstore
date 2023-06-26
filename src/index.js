@@ -6,22 +6,48 @@ const createStore = (storeName, config = {}) => {
   if (typeof storeName !== 'string') throw TypeError(`The'createStore' needs to receive a string as the first argument`)
   if (storeNames.has(storeName)) throw Error(`A store named '${storeName}' has already existed.`)
   storeNames.add(storeName)
-  console.log(storeNames)
+
   let duringAction = false
-  let gettersProxy
-  if (!isObject(config)) config = {}
-  config.state = config.state ? config.state : {}
-  config.actions = config.actions ? config.actions : {}
-  config.getters = config.getters ? config.getters : {}
+  const setDuringAction = (key) => {
+    switch (typeOf(duringAction)) {
+      case 'Boolean':
+        duringAction = key
+        break
+      case 'String':
+        duringAction = [duringAction, key]
+        break
+      case 'Array':
+        duringAction = [...duringAction, key]
+        break
+    }
+  }
+
   /*
-    定义一个函数以检查写入的属性是否与store中原有的方法重名
+    检查传入createStore的config是否符合要求
+  */
+  const initializeConfig = (target) => {
+    return typeOf(target) === 'Object' ? target : {}
+  }
+  config = initializeConfig(config)
+  config.state = initializeConfig(config.state)
+  config.actions = initializeConfig(config.actions)
+  config.getters = initializeConfig(config.getters)
+  const checkConfigItem = (target, errMsg) => {
+    for (let k in target) {
+      if (typeOf(target[k]) !== 'Function' && typeOf(target[k]) !== 'AsyncFunction') throw TypeError(errMsg)
+    }
+  }
+  checkConfigItem(config.actions, 'Actions should be defined as Functions.')
+  checkConfigItem(config.getters, 'Getters should be defined as Functions.')
+
+  /*
+    checkStateName用以检查写入的state名是否与store中原有的方法重名，如有则抛出错误
   */
   const checkStateName = (propName) => {
     if (Object.keys(config.actions).indexOf(propName) !== -1) {
       throw new Error(`Cannot write a key which has the same name as the action '${propName}' into the state.`)
     }
-    const getters = gettersProxy ? gettersProxy : config.getters
-    if (getters && Object.keys(getters).indexOf(propName) !== -1) {
+    if (Object.keys(config.getters).indexOf(propName) !== -1) {
       throw new Error(`Cannot write a key which has the same name as the getter '${propName}' into the state.`)
     }
     switch (propName) {
@@ -31,10 +57,11 @@ const createStore = (storeName, config = {}) => {
       case '$onAction':
       case '$onState':
       case '$onGetter':
-      case '$onActions':
-      case '$onStates':
-      case '$onGetters':
+      // case '$onActions':
+      // case '$onStates':
+      // case '$onGetters':
       case '$clearListeners':
+      case '$cb':
       case 'storeName':
       case 'state':
       case 'getters':
@@ -52,9 +79,17 @@ const createStore = (storeName, config = {}) => {
     stateListeners
   */
   const stateListeners = new Set()
+  const parseChain = (chain) => {
+    let chainArr = []
+    for (let item of chain.split('.')) {
+      const reg = /[^\[\]'`"]+/g
+      chainArr = [...chainArr, ...item.match(reg)]
+    }
+    return chainArr
+  }
   const getValueByChain = (chain, target) => {
     let value = target
-    const chainArr = chain.split('.')
+    const chainArr = parseChain(chain)
     for (let item of chainArr) {
       value = value[item]
       if (value === undefined) return
@@ -93,32 +128,35 @@ const createStore = (storeName, config = {}) => {
   }
 
   /* getters */
-  gettersProxy = new Proxy(config.getters, {
+  const gettersProxy = new Proxy(config.getters, {
     get(target, propName) {
       return Reflect.apply(target[propName], stateProxy, [stateProxy])
     },
-    set(target, propName, value) {
-      if (Object.keys(stateProxy).indexOf(propName) !== -1) {
-        throw new Error(`Cannot write a key which has the same name as the state '${propName}' into the getters.`)
-      }
-      if (Object.keys(config.actions).indexOf(propName) !== -1) {
-        throw new Error(`Cannot write a key which has the same name as the action '${propName}' into the getters.`)
-      }
-      if (typeof value !== 'function') {
-        throw new TypeError(`Getters should be defined as functions.`)
-      }
-      const preState = deepClone(config.state)
-      getGettersSnapshoots()
-      const res = Reflect.set(target, propName, value)
-      callGettersListeners(preState, 'redefined', duringAction)
-      return res
+    set() {
+      throw new Error(`Getters should be defined when using 'createStore'.`)
+      // if (Object.keys(stateProxy).indexOf(propName) !== -1) {
+      //   throw new Error(`Cannot write a key which has the same name as the state '${propName}' into the getters.`)
+      // }
+      // if (Object.keys(config.actions).indexOf(propName) !== -1) {
+      //   throw new Error(`Cannot write a key which has the same name as the action '${propName}' into the getters.`)
+      // }
+      // if (typeof value !== 'function') {
+      //   throw new TypeError(`Getters should be defined as functions.`)
+      // }
+      // const preState = deepClone(config.state)
+      // getGettersSnapshoots()
+      // const res = Reflect.set(target, propName, value)
+      // callGettersListeners(preState, 'redefined', duringAction)
+      // return res
+      // throw Error()
     },
-    deleteProperty(target, propName) {
-      const preState = deepClone(config.state)
-      getGettersSnapshoots()
-      const res = Reflect.deleteProperty(target, propName)
-      callGettersListeners(preState, 'redefined', duringAction)
-      return res
+    deleteProperty() {
+      return false
+      // const preState = deepClone(config.state)
+      // getGettersSnapshoots()
+      // const res = Reflect.deleteProperty(target, propName)
+      // callGettersListeners(preState, 'redefined', duringAction)
+      // return res
     }
   })
   /* gettersListeners */
@@ -231,7 +269,7 @@ const createStore = (storeName, config = {}) => {
   */
   const store = {
     storeName: storeName,
-    state: stateProxy,
+    // state: stateProxy, // stateProxy可能会被替换，所以不能直接指向它
     getters: gettersProxy,
     $set: (state) => {
       const preState = deepClone(config.state)
@@ -260,11 +298,18 @@ const createStore = (storeName, config = {}) => {
       callGettersListeners(preState, '$reset', duringAction)
     },
     $onAction: (actionName, listener) => {
-      const listenerContainer = { actionName, listener }
-      actionListeners.add(listenerContainer)
-      return () => actionListeners.delete(listenerContainer)
+      switch (typeOf(actionName)) {
+        case 'String':
+          const listenerContainer = { actionName, listener }
+          actionListeners.add(listenerContainer)
+          return () => actionListeners.delete(listenerContainer)
+        case 'Array':
+          return subscribeInBulk(storeProxy.$onAction, actionName, listener)
+        default:
+          throw new TypeError(`The first argument received by '$onAction' should be string type or array type.`)
+      }
     },
-    $onActions: (actionNames, listener) => subscribeInBulk(storeProxy.$onAction, actionNames, listener),
+    // $onActions: (actionNames, listener) => subscribeInBulk(storeProxy.$onAction, actionNames, listener),
     // $onActions: (actionNames, listener) => {
     //   unSubscribeMethods = new Set()
     //   actionNames.forEach((actionName) => {
@@ -280,20 +325,28 @@ const createStore = (storeName, config = {}) => {
     //   }
     // },
     $onState: (chain, listener, isImmediately = false, deep = 'true') => {
-      if (isImmediately) {
-        const mutation = { storeName, type: 'initialize', byAction: duringAction }
-        if (chain !== '*') {
-          const value = getValueByChain(chain, stateProxy)
-          mutation.chain = chain
-          mutation.value = mutation.preValue = value
-        }
-        listener(mutation, stateProxy, stateProxy)
+      switch (typeOf(chain)) {
+        case 'String':
+          if (isImmediately) {
+            const mutation = { storeName, type: 'initialize', byAction: duringAction }
+            if (chain !== '*') {
+              const value = getValueByChain(chain, stateProxy)
+              mutation.chain = chain
+              mutation.value = mutation.preValue = value
+            }
+            listener(mutation, stateProxy, stateProxy)
+          }
+          let listenerContainer = { chain, listener, deep }
+          stateListeners.add(listenerContainer)
+          return () => stateListeners.delete(listenerContainer)
+        case 'Array':
+          return subscribeInBulk(storeProxy.$onState, chain, listener, isImmediately, deep)
+        default:
+          throw new TypeError(`The first argument received by '$onState' should be string type or array type.`)
       }
-      let listenerContainer = { chain, listener, deep }
-      stateListeners.add(listenerContainer)
-      return () => stateListeners.delete(listenerContainer)
+
     },
-    $onStates: (chains, listener, isImmediately = false, deep = 'true') => subscribeInBulk(storeProxy.$onState, chains, listener, isImmediately, deep),
+    // $onStates: (chains, listener, isImmediately = false, deep = 'true') => subscribeInBulk(storeProxy.$onState, chains, listener, isImmediately, deep),
     // $onStates: (chains, listener, isImmediately = false, deep = 'true') => {
     //   unSubscribeMethods = new Set()
     //   chains.forEach((chain) => {
@@ -309,16 +362,23 @@ const createStore = (storeName, config = {}) => {
     //   }
     // },
     $onGetter: (getterName, listener, isImmediately = false) => {
-      if (isImmediately) {
-        const value = preValue = gettersProxy[getterName]
-        mutation = { storeName, getterName, type: 'initialize', value, preValue }
-        listener(mutation, stateProxy, stateProxy)
+      switch (typeOf(getterName)) {
+        case 'String':
+          if (isImmediately) {
+            const value = preValue = gettersProxy[getterName]
+            mutation = { storeName, getterName, type: 'initialize', value, preValue }
+            listener(mutation, stateProxy, stateProxy)
+          }
+          let listenerContainer = { getterName, listener }
+          gettersListeners.add(listenerContainer)
+          return () => gettersListeners.delete(listenerContainer)
+        case 'Array':
+          return subscribeInBulk(storeProxy.$onGetter, getterName, listener, isImmediately)
+        default:
+          throw new TypeError(`The first argument received by '$onGetter' should be string type or array type.`)
       }
-      let listenerContainer = { getterName, listener }
-      gettersListeners.add(listenerContainer)
-      return () => gettersListeners.delete(listenerContainer)
     },
-    $onGetters: (chains, listener, isImmediately = false) => subscribeInBulk(storeProxy.$onGetter, chains, listener, isImmediately),
+    // $onGetters: (getterNames, listener, isImmediately = false) => subscribeInBulk(storeProxy.$onGetter, getterNames, listener, isImmediately),
     // $onGetters: (getterNames, listener, isImmediately = false) => {
     //   unSubscribeMethods = new Set()
     //   getterNames.forEach((getterName) => {
@@ -351,6 +411,18 @@ const createStore = (storeName, config = {}) => {
         default:
           throw new Error(`The '$clearListeners' method takes one of 'state','getters','actions' or '*' as the argument`)
       }
+    },
+    $cb: (callback) => {
+      let _duringAction = duringAction
+      return callbackProxy = new Proxy(callback, {
+        apply(target, thisArg, args) {
+          let __duringAction = duringAction
+          if (_duringAction) setDuringAction(_duringAction)
+          const res = Reflect.apply(target, thisArg, args)
+          duringAction = __duringAction
+          return res
+        }
+      })
     }
   }
 
@@ -364,6 +436,7 @@ const createStore = (storeName, config = {}) => {
     */
   const storeProxy = new Proxy(store, {
     get(target, propName) {
+      if (propName === 'state') return stateProxy
       if (target[propName] !== undefined) return target[propName]
       if (Object.keys(stateProxy).indexOf(propName) !== -1) {
         return Reflect.get(stateProxy, propName)
@@ -387,11 +460,14 @@ const createStore = (storeName, config = {}) => {
     创建actionProxy，拦截action的调用
     将每个actionProxy写入store中
   */
+
   for (let key in config.actions) {
     const action = config.actions[key].bind(storeProxy)
     store[key] = new Proxy(action, {
       apply(target, thisArg, args) {
-        duringAction = key
+
+        setDuringAction(key)
+
         let res
         let catchedError
         let catchError = false
@@ -407,24 +483,47 @@ const createStore = (storeName, config = {}) => {
           return catchedError ? callback(catchedError) : undefined
         }
 
+        duringAction = false
+
         if (typeOf(res) === 'Promise') {
+
+          const thenProxy = new Proxy(res.then, {
+            apply(target, thisArg, args) {
+              const onFulfilledProxy = new Proxy(args[0], {
+                apply(target, thisArg, args) {
+                  let _duringAction = duringAction
+                  setDuringAction(key)
+                  const res = Reflect.apply(target, thisArg, args)
+                  duringAction = _duringAction
+                  return res
+                }
+              })
+              args = [onFulfilledProxy, args[1]]
+              return Reflect.apply(target, thisArg, args)
+            }
+          })
+
+          res.then = thenProxy
+
           after = callback => {
             res.then(
-              value => callback(value),
+              value => {
+                let _duringAction = duringAction
+                setDuringAction(key)
+                callback(value)
+                duringAction = _duringAction
+              },
               () => { }
             )
-            duringAction = false
             return res
           }
           onError = callback => {
-            res.then(
+            resProxy.then(
               () => { },
               reason => callback(reason)
             )
             return res
           }
-        } else {
-          duringAction = false
         }
 
         const payload = { actionName: key, storeName, args, after, onError }
