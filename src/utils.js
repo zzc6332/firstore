@@ -60,16 +60,32 @@ function isEqual(item1, item2) {
 /*
   深拷贝函数
 */
-const deepClone = (target) => {
-  if (isObject(target)) {
+const deepClone = (target, keepFunction = false) => {
+  // 如果 keepFunction 为 true，则传入函数作为 target 时，返回的函数指向原来的地址，如为 false，则返回的函数对象只保留对象部分的深拷贝
+  if (!isObject(target) || (keepFunction && typeof target === 'function')) {
+    // 是简单数据类型或保留原函数的情况
+    return target
+  } else if (typeOf(target) === 'Map') {
+    // 是 Map 的情况
+    const newTarget = new Map()
+    target.forEach((value, key) => {
+      newTarget.set(key, deepClone(value))
+    })
+    return newTarget
+  } else if (typeOf(target) === 'Set') {
+    // 是 Set 的情况
+    const newTarget = new Set()
+    target.forEach((value) => {
+      newTarget.add(value)
+    })
+    return newTarget
+  } else {
     // 是对象或数组的情况
     let newTarget = Array.isArray(target) ? [] : {}
     for (let key in target) {
-      newTarget[key] = deepClone(target[key])
+      newTarget[key] = deepClone(target[key], keepFunction)
     }
     return newTarget
-  } else {
-    return target
   }
 }
 
