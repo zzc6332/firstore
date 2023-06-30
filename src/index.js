@@ -1,10 +1,12 @@
 const { isObject, typeOf, isEqual, deepClone } = require('./utils')
 
+// storeNames 用于存储已创建的 store 名
 const storeNames = new Set()
 
+// 所有 store 共享一个 duringAction 变量，用于 [监听模块] 中的 [追踪 action 模块]
+let duringAction = false
+
 const createStore = (storeName, config = {}) => {
-
-
 
   /*
     storeName 模块
@@ -20,11 +22,11 @@ const createStore = (storeName, config = {}) => {
 
   const store = {
     storeName,
-    $set: (state) => {
+    $set: state => {
       config.state = state
       modifyState(() => stateProxy = createStateProxy(config.state), '$set')
     },
-    $patch: (replacement) => {
+    $patch: replacement => {
       modifyState(() => stateProxy = createStateProxy({ ...config.state, ...replacement }), '$patch')
     },
     $reset: () => {
@@ -32,7 +34,7 @@ const createStore = (storeName, config = {}) => {
         stateProxy = createStateProxy(initialMemory.get('initial'))
         restoreFunctions(stateProxy, 'initial', initialfunctionBackups)
       }, '$reset', false)
-    },
+    }
   }
 
   /*
@@ -40,21 +42,21 @@ const createStore = (storeName, config = {}) => {
   */
 
   // checkStateName 用以检查写入的state名是否与 actions 和 getters 中的方法或 store 中原有的方法重名，如有则抛出错误
-  const checkStateName = (propName) => {
+  const checkStateName = propName => {
     if (Object.keys(config.actions).indexOf(propName) !== -1) throw new Error(`Cannot write a key which has the same name as the action '${propName}' into the state.`)
     if (Object.keys(config.getters).indexOf(propName) !== -1) throw new Error(`Cannot write a key which has the same name as the getter '${propName}' into the state.`)
     if ([...Object.keys(store), 'state', 'actions', 'getters', '$onAction', '$onState', '$onGetter', '$clearListeners', '$cb', '$save', '$load', '$delSave', '$get'].indexOf(propName) !== -1) throw new Error(`Cannot write a key which has the same name as the '${propName}' of the store into the state.`)
   }
 
   // checkStateNames 用以检查 state 下第一层的每个属性
-  const checkStateNames = (state) => {
+  const checkStateNames = state => {
     Object.keys(state).forEach(propName => {
       checkStateName(propName)
     })
   }
 
   // checkTargetProp 用于递归检测对象中是否存在 __target__ 属性
-  const checkTargetProp = (item) => {
+  const checkTargetProp = item => {
     if (typeOf(item) !== 'Object' && typeOf(item) !== 'Function') return
     Object.keys(item).forEach(key => {
       if (key === '__target__' && !isEqual(item, item[key])) throw new Error(`Objects in the state cannot have a user-defined property named '__target__'.`)
@@ -69,7 +71,7 @@ const createStore = (storeName, config = {}) => {
   */
 
   // 初始化
-  const initializeConfig = (target) => {
+  const initializeConfig = target => {
     return typeOf(target) === 'Object' ? target : {}
   }
   config = initializeConfig(config)
@@ -154,9 +156,9 @@ const createStore = (storeName, config = {}) => {
             catchedError = error
           }
 
-          let after = (callback) => !catchedError ? callback(res) : undefined
+          let after = callback => !catchedError ? callback(res) : undefined
 
-          let onError = (callback) => {
+          let onError = callback => {
             catchError = true
             return catchedError ? callback(catchedError) : undefined
           }
@@ -165,7 +167,7 @@ const createStore = (storeName, config = {}) => {
 
           if (typeOf(res) === 'Promise') {
 
-            const thenProxy = new Proxy(res.then, {
+            res.then = new Proxy(res.then, {
               apply(target, thisArg, args) {
                 const callbackProxy = callback => new Proxy(callback, {
                   apply(target, thisArg, args) {
@@ -181,8 +183,6 @@ const createStore = (storeName, config = {}) => {
                 return Reflect.apply(target, thisArg, args)
               }
             })
-
-            res.then = thenProxy
 
             after = callback => {
               res.then(
@@ -203,7 +203,7 @@ const createStore = (storeName, config = {}) => {
           }
 
           const payload = { name: key, storeName, args, preState }
-          actionListeners.forEach((listenerContainer) => {
+          actionListeners.forEach(listenerContainer => {
             const { actionName, listener } = listenerContainer
             if (actionName === key || actionName === '*') listener(payload, after, onError)
           })
@@ -256,13 +256,13 @@ const createStore = (storeName, config = {}) => {
   // subscribeInBulk 用以在 $onState 或 $onAction 或 $onGetter 方法中进行批量监听操作
   const subscribeInBulk = (subscribeMethod, identifiers, ...args) => {
     const unSubscribeMethods = new Set()
-    identifiers.forEach((identifier) => {
+    identifiers.forEach(identifier => {
       const res = subscribeMethod(identifier, ...args)
       unSubscribeMethods.add(res)
     })
     return () => {
       let res = false
-      unSubscribeMethods.forEach((unSubscribeMethod) => {
+      unSubscribeMethods.forEach(unSubscribeMethod => {
         res = unSubscribeMethod() || res
       })
       return res
@@ -271,7 +271,7 @@ const createStore = (storeName, config = {}) => {
 
   // chain 模块 - 监听 state 时使用 chain 作为标识符
   // parseChain 用于将 chain 解析并拆分为数组
-  const parseChain = (chain) => {
+  const parseChain = chain => {
     let chainArr = []
     for (let item of chain.split('.')) {
       const reg = /[^\[\]'`"]+/g
@@ -292,28 +292,37 @@ const createStore = (storeName, config = {}) => {
 
   // 追踪 action 模块 - 用于监听 state 或 getter 发生变化时，判断其是否由 action 引起
   // 当一个 action 对 state 进行修改操作前后，修改 duringAction 的值，实现方式体现在 [核心模块] 的 handleActions 函数中
-  let duringAction = false
-  // 调用 setDuringAction 以修改 duringAction 的值
-  const setDuringAction = (key) => {
+  // setDuringAction 用于修改 duringAction 的值
+  const setDuringAction = key => {
+    const actionInfo = { storeName, actionName: key }
     switch (typeOf(duringAction)) {
       case 'Boolean':
-        duringAction = key
-        break
-      case 'String':
-        duringAction = [duringAction, key]
+        duringAction = [actionInfo]
         break
       case 'Array':
-        duringAction = [...duringAction, key]
+        duringAction = [...duringAction, actionInfo]
+        break
+    }
+  }
+  // setDuringAction 用于在现有的 duringAction 上合并新的 duringAction 信息
+  const combineDuringAction = _duringAction => {
+    switch (typeOf(duringAction)) {
+      case 'Boolean':
+        duringAction = _duringAction
+        break
+      case 'Array':
+        duringAction = [...duringAction, ..._duringAction]
         break
     }
   }
   // 为 store 添加 $cb 方法，以配合追踪异步 action
-  store.$cb = (callback) => {
+  store.$cb = callback => {
+    // _duringAction 是调用 $cb 时，duringAction 的值
     let _duringAction = duringAction
     return new Proxy(callback, {
       apply(target, thisArg, args) {
         let duringActionCache = duringAction
-        if (_duringAction) setDuringAction(_duringAction)
+        if (_duringAction) combineDuringAction(_duringAction)
         const res = Reflect.apply(target, thisArg, args)
         duringAction = duringActionCache
         return res
@@ -375,7 +384,7 @@ const createStore = (storeName, config = {}) => {
 
   // callStateListeners 需要在 state 可能发生变化时调用，它会判断哪些监听的 state 发生了变化，并执行 stateListeners 中对应的回调函数
   const callStateListeners = (preState, type, byAction) => {
-    stateListeners.forEach((listenerContainer) => {
+    stateListeners.forEach(listenerContainer => {
       const { listener, chain, deep } = listenerContainer
       const mutation = {
         storeName,
@@ -411,7 +420,7 @@ const createStore = (storeName, config = {}) => {
   const chainSnapshots = {}
   // getChainSnapshots 调用时，将所有 state 监听中的 chain 与这些 chain 在当前 stateProxy 中对应的值（引用对象的话则是指向地址）作为键值对保存到 chainSnapshots 中
   const getChainSnapshots = () => {
-    stateListeners.forEach((listenerContainer) => {
+    stateListeners.forEach(listenerContainer => {
       const { chain } = listenerContainer
       if (chain !== '*') chainSnapshots[chain] = getValueByChain(chain, stateProxy)
     })
@@ -449,7 +458,7 @@ const createStore = (storeName, config = {}) => {
 
   // callGetterListeners 需要在 state 可能发生变化时调用，它会判断此次变化是否使得监听的 getter 返回值发生了变化，并执行 getterListeners 中对应的回调函数
   const callGetterListeners = (preState, type, byAction) => {
-    getterListeners.forEach((listenerContainer) => {
+    getterListeners.forEach(listenerContainer => {
       const { getterName, listener } = listenerContainer
       const value = gettersProxy[getterName]
       const preValue = gettersSnapshots[getterName]
@@ -473,7 +482,7 @@ const createStore = (storeName, config = {}) => {
   const gettersSnapshots = {}
   // getGettersSnapshots 调用时，将监听的 getter 的 getterName 与这些 getter 此时的返回值作为键值对保存到 gettersSnapshots 中
   const getGettersSnapshots = () => {
-    getterListeners.forEach((listenerContainer) => {
+    getterListeners.forEach(listenerContainer => {
       const { getterName } = listenerContainer
       gettersSnapshots[getterName] = gettersProxy[getterName]
     })
@@ -592,7 +601,7 @@ const createStore = (storeName, config = {}) => {
     memory.set(id, snapshot)
     return id
   },
-    store.$load = (id) => {
+    store.$load = id => {
       if (memory.has(id)) {
         modifyState(() => {
           stateProxy = createStateProxy(memory.get(id))
@@ -603,7 +612,7 @@ const createStore = (storeName, config = {}) => {
         return false
       }
     },
-    store.$delSave = (id) => {
+    store.$delSave = id => {
       if (id === '*') {
         functionBackups.clear()
         return memory.clear()
@@ -611,7 +620,7 @@ const createStore = (storeName, config = {}) => {
       deleteBackup(id, functionBackups)
       return memory.delete(id)
     },
-    store.$get = (id) => memory.get(id)
+    store.$get = id => memory.get(id)
 
   return storeProxy
 }
