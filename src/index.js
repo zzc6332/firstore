@@ -139,11 +139,10 @@ const createStore = (storeName, config = {}) => {
     })
   }
 
-  // handleActions 用于处理 actions 中的 action，返回处理后的 actions 对象
-  const processActions = actions => {
-    let processedAction = {}
+  // createActionsProxy 用于处理 actions 中的 action，返回处理后的 actions 对象的代理对象
+  const createActionsProxy = actions => {
     Object.keys(actions).forEach(key => {
-      processedAction[key] = new Proxy(actions[key], {
+      actions[key] = new Proxy(actions[key], {
         apply(target, _, args) {
 
           setDuringAction(key)
@@ -214,14 +213,18 @@ const createStore = (storeName, config = {}) => {
       })
     })
 
-    return processedAction
+    return new Proxy(actions, {
+      set() {
+        throw new Error(`Actions should be defined when using 'createStore'.`)
+      }
+    })
   }
 
   // 分别处理 state，actions，getters，store
   let stateProxy = createStateProxy(config.state)
-  const actions = processActions(config.actions)
+  const actionsProxy = createActionsProxy(config.actions)
   const gettersProxy = createGettersProxy(config.getters)
-  store.actions = actions
+  store.actions = actionsProxy
   store.getters = gettersProxy
   const storeProxy = new Proxy(store, {
     get(target, propName) {
@@ -232,8 +235,8 @@ const createStore = (storeName, config = {}) => {
       if (target[propName] !== undefined) return target[propName]
       // 从 storeProxy 中读取的属性名在 stateProxy 中存在时，返回该属性
       if (Object.keys(stateProxy).indexOf(propName) !== -1) return Reflect.get(stateProxy, propName)
-      // 从 storeProxy 中读取的属性名在 actions 中存在时，返回该属性
-      if (Object.keys(actions).indexOf(propName) !== -1) return Reflect.get(actions, propName)
+      // 从 storeProxy 中读取的属性名在 actionsProxy 中存在时，返回该属性
+      if (Object.keys(actionsProxy).indexOf(propName) !== -1) return Reflect.get(actionsProxy, propName)
       // 从 storeProxy 中读取的属性名在 gettersProxy 中存在时，返回该属性
       if (Object.keys(gettersProxy).indexOf(propName) !== -1) return Reflect.get(gettersProxy, propName)
     },
@@ -291,7 +294,7 @@ const createStore = (storeName, config = {}) => {
   }
 
   // 追踪 action 模块 - 用于监听 state 或 getter 发生变化时，判断其是否由 action 引起
-  // 当一个 action 对 state 进行修改操作前后，修改 duringAction 的值，实现方式体现在 [核心模块] 的 handleActions 函数中
+  // 当一个 action 对 state 进行修改操作前后，修改 duringAction 的值，实现方式体现在 [核心模块] 的 createActionsProxy 函数中
   // setDuringAction 用于修改 duringAction 的值
   const setDuringAction = key => {
     const actionInfo = { storeName, actionName: key }
@@ -514,7 +517,7 @@ const createStore = (storeName, config = {}) => {
 
   // ↓↓↓ action 监听模块 ↓↓↓
 
-  // actionListeners 用于存放监听的 action 的回调函数，其调用方式的实现体现在 [核心模块] 的 handleActions 函数中
+  // actionListeners 用于存放监听的 action 的回调函数，其调用方式的实现体现在 [核心模块] 的 createActionsProxy 函数中
   const actionListeners = new Set()
 
   // 为 store 添加 $onAction 方法
