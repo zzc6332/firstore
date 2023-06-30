@@ -430,10 +430,10 @@ const createStore = (storeName, config = {}) => {
   }
 
   // 为 store 添加 $onState 方法
-  store.$onState = (chain, listener, isImmediately = false, deep = true) => {
+  store.$onState = (chain, listener, isImmediate = false, deep = true) => {
     switch (typeOf(chain)) {
       case 'String':
-        if (isImmediately) {
+        if (isImmediate) {
           const mutation = { storeName, type: 'initialize', byAction: duringAction }
           if (chain !== '*') {
             const value = getValueByChain(chain, stateProxy)
@@ -446,7 +446,7 @@ const createStore = (storeName, config = {}) => {
         stateListeners.add(listenerContainer)
         return () => stateListeners.delete(listenerContainer)
       case 'Array':
-        return subscribeInBulk(storeProxy.$onState, chain, listener, isImmediately, deep)
+        return subscribeInBulk(storeProxy.$onState, chain, listener, isImmediate, deep)
       default:
         throw new TypeError(`The first argument received by '$onState' should be string type or array type.`)
     }
@@ -492,13 +492,13 @@ const createStore = (storeName, config = {}) => {
   }
 
   // 为 sotre 添加 $onGetter 方法
-  store.$onGetter = (getterName, listener, isImmediately = false) => {
+  store.$onGetter = (getterName, listener, isImmediate = false) => {
     const getterNames = Object.keys(gettersProxy)
-    if (getterName === '*') return subscribeInBulk(storeProxy.$onGetter, getterNames, listener, isImmediately)
+    if (getterName === '*') return subscribeInBulk(storeProxy.$onGetter, getterNames, listener, isImmediate)
     if (getterNames.indexOf(getterName) === -1) throw new Error(`The getter named '${getterName}' to be subscribed is not defined in Getters.`)
     switch (typeOf(getterName)) {
       case 'String':
-        if (isImmediately) {
+        if (isImmediate) {
           const value = preValue = gettersProxy[getterName]
           mutation = { storeName, getterName, type: 'initialize', value, preValue }
           listener(mutation, stateProxy, stateProxy)
@@ -507,7 +507,7 @@ const createStore = (storeName, config = {}) => {
         getterListeners.add(listenerContainer)
         return () => getterListeners.delete(listenerContainer)
       case 'Array':
-        return subscribeInBulk(storeProxy.$onGetter, getterName, listener, isImmediately)
+        return subscribeInBulk(storeProxy.$onGetter, getterName, listener, isImmediate)
       default:
         throw new TypeError(`The first argument received by '$onGetter' should be string type or array type.`)
     }

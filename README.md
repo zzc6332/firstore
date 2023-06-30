@@ -364,7 +364,7 @@ npm install firstore -S
              // - 'name: Joie, byAction: [{"storeName":"foo","actionName":"getNamePromise"},{"storeName":"foo","actionName":"changeName"}]'
              ~~~
 
-  3. `isImmediately`
+  3. `isImmediate`
 
      - 是否在发起监听时立即调用一次 `callback`；
      - 默认为 `false`。
@@ -488,7 +488,7 @@ npm install firstore -S
            - 本次 `getter` 返回值变化时，其依赖的数据变化的方式，同 `$onState` 。
          - `byAction`**（实验性）**
            - 参与本次数据变化的 `action` ，同 `$onState`。
-  3. `isImmediately`
+  3. `isImmediate`
      - 是否在发起监听时立即调用一次 `callBack`；
      - 默认为 `false`。
 - 返回值

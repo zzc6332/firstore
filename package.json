@@ -1,6 +1,6 @@
 {
   "name": "firstore",
-  "version": "1.0.2",
+  "version": "1.0.3",
   "main": "src/index.js",
   "author": "zzc6332",
   "license": "MIT",
@@ -10,5 +10,9 @@
     "front-end",
     "state-managment",
     "mini-program"
-  ]
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zzc6332/firstore"
+  }
 }
