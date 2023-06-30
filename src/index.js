@@ -32,7 +32,7 @@ const createStore = (storeName, config = {}) => {
         stateProxy = createStateProxy(initialMemory.get('initial'))
         restoreFunctions(stateProxy, 'initial', initialfunctionBackups)
       }, '$reset', false)
-    }
+    },
   }
 
   /*
@@ -187,28 +187,25 @@ const createStore = (storeName, config = {}) => {
             after = callback => {
               res.then(
                 value => {
-                  let _duringAction = duringAction
-                  setDuringAction(key)
-                  callback(value)
-                  duringAction = _duringAction
+                  callback.call(storeProxy, value, storeProxy)
                 },
                 () => { }
               )
               return res
             }
             onError = callback => {
-              resProxy.then(
+              res.then(
                 () => { },
-                reason => callback(reason)
+                reason => callback.call(storeProxy, reason, storeProxy)
               )
               return res
             }
           }
 
-          const payload = { name: key, storeName, args, after, onError }
+          const payload = { name: key, storeName, args, preState }
           actionListeners.forEach((listenerContainer) => {
             const { actionName, listener } = listenerContainer
-            if (actionName === key || actionName === '*') listener(payload, preState)
+            if (actionName === key || actionName === '*') listener(payload, after, onError)
           })
 
           if (!catchError && catchedError) throw catchedError
@@ -313,12 +310,12 @@ const createStore = (storeName, config = {}) => {
   // 为 store 添加 $cb 方法，以配合追踪异步 action
   store.$cb = (callback) => {
     let _duringAction = duringAction
-    return callbackProxy = new Proxy(callback, {
+    return new Proxy(callback, {
       apply(target, thisArg, args) {
-        let __duringAction = duringAction
+        let duringActionCache = duringAction
         if (_duringAction) setDuringAction(_duringAction)
         const res = Reflect.apply(target, thisArg, args)
-        duringAction = __duringAction
+        duringAction = duringActionCache
         return res
       }
     })
@@ -383,10 +380,11 @@ const createStore = (storeName, config = {}) => {
       const mutation = {
         storeName,
         type,
-        byAction
+        byAction,
+        preState
       }
       if (chain === '*') {
-        listener(mutation, preState)
+        listener(mutation)
         return
       }
       mutation.chain = chain
@@ -398,12 +396,12 @@ const createStore = (storeName, config = {}) => {
           // chainSnapshots[chain] 是这次变化前的该 chain 对应的引用地址的数据
           // 如果该 chain 的引用地址被改变了，则 preValue 将变成改变前的引用地址并触发监听器
           mutation.preValue = chainSnapshots[chain]
-          listener(mutation, preState)
+          listener(mutation)
           // 非函数类型或函数引用地址没有改变，则可以直接比较对象部分是否结构内容相等
-        } else if (!isEqual(mutation.value, mutation.preValue)) listener(mutation, preState)
+        } else if (!isEqual(mutation.value, mutation.preValue)) listener(mutation)
       } else {
         mutation.preValue = chainSnapshots[chain]
-        if (mutation.value !== mutation.preValue) listener(mutation, preState)
+        if (mutation.value !== mutation.preValue) listener(mutation)
       }
     })
   }
@@ -462,9 +460,10 @@ const createStore = (storeName, config = {}) => {
           type,
           byAction,
           value,
-          preValue
+          preValue,
+          preState
         }
-        listener(mutation, preState)
+        listener(mutation)
       }
     })
   }
