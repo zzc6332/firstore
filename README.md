@@ -124,7 +124,7 @@ npm install firstore -S
 
 ### actions
 
-- `actions` 中定义与当前 `store` 相关的业务逻辑，在创建 `store` 时定义
+- `actions` 中定义与当前 `store` 相关的业务逻辑。
 
 #### 定义 actions
 
@@ -144,7 +144,7 @@ npm install firstore -S
 
 ### getters
 
-- `getters` 中定义一些计算属性，在创建 `store` 时定义
+- `getters` 中定义一些计算属性。
 
 #### 定义 getters
 
@@ -364,7 +364,7 @@ npm install firstore -S
              // - 'name: Joie, byAction: [{"storeName":"foo","actionName":"getNamePromise"},{"storeName":"foo","actionName":"changeName"}]'
              ~~~
 
-  3. `isImmediate`
+  3. `isImmediately`
 
      - 是否在发起监听时立即调用一次 `callback`；
      - 默认为 `false`。
@@ -488,7 +488,7 @@ npm install firstore -S
            - 本次 `getter` 返回值变化时，其依赖的数据变化的方式，同 `$onState` 。
          - `byAction`**（实验性）**
            - 参与本次数据变化的 `action` ，同 `$onState`。
-  3. `isImmediate`
+  3. `isImmediately`
      - 是否在发起监听时立即调用一次 `callBack`；
      - 默认为 `false`。
 - 返回值
@@ -528,7 +528,7 @@ npm install firstore -S
 
 - 注意：
 
-  - 如果 `state` 中存在一个函数对象，且它在某处原点中与当前 `state` 中仍指向同一引用地址，但属性有改变，则：
+  - 如果 `state` 中存在一个函数对象，且它在某还原点中与当前 `state` 中仍指向同一引用地址，但属性有改变，则：
     - 使用 `$get` 方法得到的该还原点 `state` 中，该函数对象与当前 `state` 中指向同一引用地址，且属性相同；
     - 使用 `$load` 方法加载该还原点 `state` 后，该函数对象保持相同引用地址，且属性会还原至该还原点中的状态。
 
