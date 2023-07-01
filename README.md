@@ -11,7 +11,7 @@
 npm install firstore -S
 ~~~
 
-### Store 
+### Store
 
 - 调用 `createStore` 函数可返回一个 `store` 实例。
   - 接收参数：
@@ -40,7 +40,7 @@ npm install firstore -S
           changeName(name){
               this.name = name
           }
-      }, 
+      },
       getters:{
           // getters 中定义一些计算属性
           introduction: (state) => `我是${state.name}, 今年${state.age}岁。`
@@ -60,7 +60,7 @@ npm install firstore -S
 
   ~~~javascript
   const fooStore = require('./fooStore')
-  
+
   console.log(fooStore.name) // 'zzc6332'
   console.log(fooStore.age) // 26
   ~~~
@@ -79,7 +79,7 @@ npm install firstore -S
 
   ~~~javascript
   const fooStore = require('./fooStore')
-  
+
   fooStore.name = 'Joie'
   console.log(fooStore.name) // 'Joie'
   fooStore.age -= 8
@@ -120,7 +120,7 @@ npm install firstore -S
   console.log(fooStore.state) // { name: 'zzc6332', age: 26, isAdmin: true }
   ~~~
 
-  
+
 
 ### actions
 
@@ -161,7 +161,7 @@ npm install firstore -S
 
   ~~~javascript
   const fooStore = require('./fooStore')
-  
+
   console.log(fooStore.introduction) // '我是zzc6332, 今年26岁。'
   ~~~
 
@@ -212,12 +212,12 @@ npm install firstore -S
 
            - 监听的目标的标识符，即 `$onState` 方法中传入的第一个参数 `identifier` （如果是批量监听，则返回 `identifier` 数组中对应的标识符）；
            - 如果监听的标识符是 `'*'`，则 `mutation` 对象中不包含此项。
-       
+
          - `value`
 
            - 监听的目标变化后的值；
            - 如果监听的标识符是 `'*'`，则 `mutation` 对象中不包含此项。
-       
+
          - `preValue`
 
            - 监听的目标变化前的值；
@@ -225,15 +225,15 @@ npm install firstore -S
            - 注意：
              - `deep` 模式下，如果监听的数据是一个函数对象，且它的对象属性被改变了，则 `preValue` 是它作为对象的快照；
              - 如果是监听的函数的引用地址改变了，则 `preValue` 是之前的函数本身。
-       
+
          - `preState`
 
            - 监听的目标变化前的 `state` 对象的快照；
            - 注意：
              - 如果 `state` 中存在函数对象，则其在 `preState` 中将只保留对象部分的快照。
-         
+
          - `type`
-         
+
            - 造成此次数据变化的方式，值为以下之一：
              - `'direct'` 通过 `store` 实例直接操作数据；
              - `'$patch'` 通过 `$patch` 方法改变数据；
@@ -247,16 +247,16 @@ npm install firstore -S
 
              - 如果此次数据变化不是由 `action` 的调用造成，则该值为 `false`；
              - 如果此次数据变化由 `action` 的调用造成，则该值为一个包含了参与此次数据变化的 `action` 的描述对象的数组，描述对象的 `storeName` 属性表示该 `action` 所属的 `store` 的名称，`actionName` 属性表示该 `action` 的名称；
-         
+
            - 异步 `action` 的捕获：
-         
+
              - 默认情况下，如果一个 `action` 调用时启动了一个异步任务，且该异步任务造成了监听的数据的变化，该 `action` 不会被 `byAction` 捕获；
-         
+
              - 如果监听的数据的变化存在于 `action` 中异步调用的回调函数中，则可将该回调函数传入 `this.$cb()` 在 `action` 中同步调用，`this.$cb(callback)`将返回一个新的回调函数供异步调用，此时该 `action` 可以被 `byAction` 捕获：
-         
+
                ~~~javascript
                const { createStore } = require('firstore')
-               
+
                const fooStore = createStore('foo', {
                  state: {
                    name: 'zzc6332',
@@ -266,27 +266,27 @@ npm install firstore -S
                      const callback = this.$cb(() => { this.name = name })
                      setTimeout(callback, delay)
                      /*
-                       setTimeout(this.$cb(() => { this.name = name }), delay) 
+                       setTimeout(this.$cb(() => { this.name = name }), delay)
                        // 这种方式不可行，this.$cb必须在 action 中被同步调用
                      */
                    }
                  }
                })
-               
+
                fooStore.$onState('name', (mutation) => {
                  console.log('name: ' + mutation.value + ', byAction: ' + JSON.stringify(mutation.byAction))
                })
-               
-               fooStore.changeNameAsync('Joie', 1000) 
+
+               fooStore.changeNameAsync('Joie', 1000)
                // 1000ms后控制台输出：
                // - 'name: Joie, byAction: [{"storeName":"foo","actionName":"changeNameAsync"}]'
                ~~~
-         
+
              - 如果需要在使用 `async/await` 时被 `byAction` 捕获，可将需要在 `await` 之后修改数据的操作放入函数中传给 `this.$cb` 在 `action` 中同步调用，将返回的函数在 `await` 之后使用：
-       
+
                ~~~javascript
                const { createStore } = require('firstore')
-               
+        
                const fooStore = createStore('foo', {
                  state: {
                    name: 'zzc6332',
@@ -303,23 +303,23 @@ npm install firstore -S
                    }
                  }
                })
-               
+        
                fooStore.$onState('name', (mutation) => {
                  console.log('name: ' + mutation.value + ', byAction: ' + mutation.byAction)
                })
-               
+        
                const promiseJoie = new Promise((resolve) => {
                  setTimeout(() => {
                    resolve('Joie')
                  }, 1000)
                })
-               
+        
                const promiseMocha = new Promise((resolve) => {
                  setTimeout(() => {
                    resolve('Mocha')
                  }, 500)
                })
-               
+        
                fooStore.changeNameAsync(promiseJoie, promiseMocha)
                // 1000ms后控制台输出：
                // - '获取 rest1 之后的操作'
@@ -327,12 +327,12 @@ npm install firstore -S
                // - '获取 rest2 之后的操作'
                // - 'name: Mocha, byAction: [{"storeName":"foo","actionName":"changeNameAsync"}]'
                ~~~
-         
+
            - 如果一个 `action` 返回了一个 `promise`，且该 `promise` 在其调用的 `then` 方法的回调中（不支持在被 `await` 时被捕获），或在 `action` 监听函数的 `after/onError` 函数的回调中修改了监听的数据，则该 `action` 会被 `byAction` 捕获：
-         
+
              ~~~javascript
              const { createStore } = require('firstore')
-             
+        
              const fooStore = createStore('foo', {
                state: {
                  name: 'zzc6332',
@@ -348,17 +348,17 @@ npm install firstore -S
                  }
                }
              })
-             
+        
              fooStore.$onState('name', (mutation) => {
                console.log('name: ' + mutation.value + ', byAction: ' + JSON.stringify(mutation.byAction))
              })
-             
+        
              fooStore.$onAction('getNamePromise', (_, after) => {
                after((res, _this) => {
                  _this.changeName(res)
                })
              })
-             
+        
              fooStore.getNamePromise('Joie', 1000)
              // 1000ms后控制台输出：
              // - 'name: Joie, byAction: [{"storeName":"foo","actionName":"getNamePromise"},{"storeName":"foo","actionName":"changeName"}]'
@@ -420,19 +420,19 @@ npm install firstore -S
 
      - 监听的 `action` 被调用时执行的回调函数；
      - 定义参数：
-     
+
        1. `info`
-     
+
           - 一个对象，包含所监听的 `action` 调用的信息，包括：
-     
-            - `name` 
-     
+
+            - `name`
+
               - 监听的 `action` 名的字符串。
           - `storeName`
-            
+
             - 该监听所属的 `store` 的名称。
             - `args`
-     
+
               - 该次 `action` 被调用时传入的参数。
           - `preState`
               - 该次 `action` 执行前的 `state` 对象的快照；
@@ -508,7 +508,7 @@ npm install firstore -S
   - `'*'`
     - 清空所有类型的监听。
 
-### 还原点 
+### 还原点
 
 - `state` 中的数据可以保存到还原点中，并可以随时通过还原点查看或恢复数据。
 
