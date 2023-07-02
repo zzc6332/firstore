@@ -367,14 +367,16 @@ const createStore = (storeName, config = {}) => {
     const preState = deepClone(config.state)
     getChainSnapshots()
     getGettersSnapshots()
-    const res = modification()
-    // if (propName !== false) propName ? checkStateName(propName) : checkStateNames(stateProxy)
+    const res = modification ? modification() : undefined
+    const isForce = modification ? false : true
     if (value !== false) {
       checkStateNames(stateProxy)
       value ? checkTargetProp(value) : checkTargetProp(stateProxy)
     }
-    callStateListeners(preState, type, duringAction)
-    callGetterListeners(preState, type, duringAction)
+    callStateListeners(preState, type, duringAction, isForce)
+    callGetterListeners(preState, type, duringAction, isForce)
+    chainSnapshots = {}
+    gettersSnapshots = {}
     return res
   }
 
@@ -386,7 +388,7 @@ const createStore = (storeName, config = {}) => {
   const stateListeners = new Set()
 
   // callStateListeners 需要在 state 可能发生变化时调用，它会判断哪些监听的 state 发生了变化，并执行 stateListeners 中对应的回调函数
-  const callStateListeners = (preState, type, byAction) => {
+  const callStateListeners = (preState, type, byAction, isForce) => {
     stateListeners.forEach(listenerContainer => {
       const { listener, chain, deep } = listenerContainer
       const mutation = {
@@ -401,6 +403,10 @@ const createStore = (storeName, config = {}) => {
       }
       mutation.chain = chain
       mutation.value = getValueByChain(chain, stateProxy)
+      if (isForce) {
+        mutation.preValue = mutation.value
+        listener(mutation)
+      }
       if (deep) {
         mutation.preValue = getValueByChain(chain, preState)
         // deep下，函数类型的 preVale 默认是它的对象部分的快照，但还得判断该函数是否被更换了引用地址
@@ -420,7 +426,7 @@ const createStore = (storeName, config = {}) => {
 
   // chainSnapshots 模块
   // chainSnapshots 用以保存 state 监听中的 chain 在 stateProxy 中某一时刻对应的数据的指向地址，在非 deep 模式的 state 监听中用以比较监听的数据的指向地址是否发生改变
-  const chainSnapshots = {}
+  let chainSnapshots = {}
   // getChainSnapshots 调用时，将所有 state 监听中的 chain 与这些 chain 在当前 stateProxy 中对应的值（引用对象的话则是指向地址）作为键值对保存到 chainSnapshots 中
   const getChainSnapshots = () => {
     stateListeners.forEach(listenerContainer => {
@@ -431,19 +437,14 @@ const createStore = (storeName, config = {}) => {
 
   // 为 store 添加 $onState 方法
   store.$onState = (chain, listener, isImmediate = false, deep = true) => {
+    listener = listener.bind(storeProxy)
     switch (typeOf(chain)) {
       case 'String':
-        if (isImmediate) {
-          const mutation = { storeName, type: 'initialize', byAction: duringAction }
-          if (chain !== '*') {
-            const value = getValueByChain(chain, stateProxy)
-            mutation.chain = chain
-            mutation.value = mutation.preValue = value
-          }
-          listener(mutation, stateProxy, stateProxy)
-        }
         let listenerContainer = { chain, listener, deep }
         stateListeners.add(listenerContainer)
+        if (isImmediate) {
+          modifyState(false, 'initial', false)
+        }
         return () => stateListeners.delete(listenerContainer)
       case 'Array':
         return subscribeInBulk(storeProxy.$onState, chain, listener, isImmediate, deep)
@@ -460,12 +461,12 @@ const createStore = (storeName, config = {}) => {
   const getterListeners = new Set()
 
   // callGetterListeners 需要在 state 可能发生变化时调用，它会判断此次变化是否使得监听的 getter 返回值发生了变化，并执行 getterListeners 中对应的回调函数
-  const callGetterListeners = (preState, type, byAction) => {
+  const callGetterListeners = (preState, type, byAction, isForce) => {
     getterListeners.forEach(listenerContainer => {
       const { getterName, listener } = listenerContainer
       const value = gettersProxy[getterName]
       const preValue = gettersSnapshots[getterName]
-      if (!isEqual(value, preValue)) {
+      if (isForce || !isEqual(value, preValue)) {
         const mutation = {
           storeName,
           name: getterName,
@@ -482,7 +483,7 @@ const createStore = (storeName, config = {}) => {
 
   // gettersSnapshots 模块
   // gettersSnapshots 用以保存监听的 getter 在某一时刻的返回值
-  const gettersSnapshots = {}
+  let gettersSnapshots = {}
   // getGettersSnapshots 调用时，将监听的 getter 的 getterName 与这些 getter 此时的返回值作为键值对保存到 gettersSnapshots 中
   const getGettersSnapshots = () => {
     getterListeners.forEach(listenerContainer => {
@@ -493,18 +494,15 @@ const createStore = (storeName, config = {}) => {
 
   // 为 sotre 添加 $onGetter 方法
   store.$onGetter = (getterName, listener, isImmediate = false) => {
+    listener = listener.bind(storeProxy)
     const getterNames = Object.keys(gettersProxy)
     if (getterName === '*') return subscribeInBulk(storeProxy.$onGetter, getterNames, listener, isImmediate)
     if (getterNames.indexOf(getterName) === -1) throw new Error(`The getter named '${getterName}' to be subscribed is not defined in Getters.`)
     switch (typeOf(getterName)) {
       case 'String':
-        if (isImmediate) {
-          const value = preValue = gettersProxy[getterName]
-          mutation = { storeName, getterName, type: 'initialize', value, preValue }
-          listener(mutation, stateProxy, stateProxy)
-        }
         let listenerContainer = { getterName, listener }
         getterListeners.add(listenerContainer)
+        if (isImmediate) modifyState(false, 'initial', false)
         return () => getterListeners.delete(listenerContainer)
       case 'Array':
         return subscribeInBulk(storeProxy.$onGetter, getterName, listener, isImmediate)
@@ -522,6 +520,7 @@ const createStore = (storeName, config = {}) => {
 
   // 为 store 添加 $onAction 方法
   store.$onAction = (actionName, listener) => {
+    listener = listener.bind(storeProxy)
     if (Object.keys(config.actions).indexOf(actionName) === -1) throw new Error(`The action named '${actionName}' to be subscribed is not defined in Actions.`)
     switch (typeOf(actionName)) {
       case 'String':
