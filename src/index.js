@@ -116,7 +116,7 @@ const createStore = (storeName, config = {}) => {
       set(target, propName, value) {
         // 如果修改的新值是对象数据类型的话，也需要为它创建proxy
         value = isObject(value) && !value.__target__ ? createStateProxy(value) : value
-        return modifyState(() => Reflect.set(target, propName, value), 'direct', value)
+        return modifyState(() => Reflect.set(target, propName, value), 'direct', { value })
       },
       deleteProperty(target, propName) {
         return modifyState(() => Reflect.deleteProperty(target, propName), 'direct', propName)
@@ -360,16 +360,16 @@ const createStore = (storeName, config = {}) => {
   // modifyState 用于修改 state 数据，并对修改进行监听，所有 state 的修改操作都通过 modifyState 进行
   // - 将操作 state 的函数作为第一个参数传入，如果传入 false 则不修改 state 但强制执行
   // - 将操作的类型字符串作为第二个参数传入
-  // - 如果不是批量修改操作，则将单独修改的值作为第三个参数 value 传入，用以单独检查该 value 是否
-  // - 如果不需要进行检查 state 名，则将 false 作为第三个参数 value 传入
-  const modifyState = (modification, type, value) => {
+  // - 如果不是批量修改操作，则将单独修改的值以 value 为键名放入一个对象中，作为第三个参数 check 传入，用以单独检查
+  // - 如果不需要进行检查 state 名，则将 false 作为第三个参数 check 传入
+  const modifyState = (modification, type, check) => {
     const preState = deepClone(config.state)
     getChainSnapshots()
     getGettersSnapshots()
     const res = modification ? modification() : undefined
-    if (value !== false) {
+    if (check !== false) {
       checkStateNames(stateProxy)
-      value !== undefined ? checkTargetProp(value) : checkTargetProp(stateProxy)
+      typeOf(check) === 'Object' ? checkTargetProp(check.value) : checkTargetProp(stateProxy)
     }
     const mutationMakers = createMutationMakers(preState, type)
     const { createStateMutation, createGetterMutation } = mutationMakers
