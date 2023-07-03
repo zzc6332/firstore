@@ -1,7 +1,10 @@
 # firstore
 
 - `firstore` 是一个全局状态管理工具，可用于`小程序`、`Vue`、`React` 等。
-- `firstore` 中的 `state` 每一层都由 `Proxy` 代理，可以分别对 `state`、`actions`、`getters` 进行监听，并可以为 `state` 创建还原点，一些使用方式参考了 [Pinia](https://github.com/vuejs/pinia)。
+- `firstore` 的核心部分由 `state`、`actions`、`getters` 组成（参考了 `Pinia`）：
+  - `state` 中的每一层都由 `Proxy` 代理；
+  - 可以分别对 `state`、`actions`、`getters` 进行监听；
+  - 可以为 `state` 创建还原点。
 
 ## 使用说明
 
@@ -286,7 +289,7 @@ npm install firstore -S
 
                ~~~javascript
                const { createStore } = require('firstore')
-        
+              
                const fooStore = createStore('foo', {
                  state: {
                    name: 'zzc6332',
@@ -303,23 +306,23 @@ npm install firstore -S
                    }
                  }
                })
-        
+              
                fooStore.$onState('name', (mutation) => {
-                 console.log('name: ' + mutation.value + ', byAction: ' + mutation.byAction)
+                 console.log('name: ' + mutation.value + ', byAction: ' + JSON.stringify(mutation.byAction))
                })
-        
+              
                const promiseJoie = new Promise((resolve) => {
                  setTimeout(() => {
                    resolve('Joie')
                  }, 1000)
                })
-        
+              
                const promiseMocha = new Promise((resolve) => {
                  setTimeout(() => {
                    resolve('Mocha')
                  }, 500)
                })
-        
+              
                fooStore.changeNameAsync(promiseJoie, promiseMocha)
                // 1000ms后控制台输出：
                // - '获取 rest1 之后的操作'
@@ -332,7 +335,7 @@ npm install firstore -S
 
              ~~~javascript
              const { createStore } = require('firstore')
-        
+              
              const fooStore = createStore('foo', {
                state: {
                  name: 'zzc6332',
@@ -348,17 +351,17 @@ npm install firstore -S
                  }
                }
              })
-        
+              
              fooStore.$onState('name', (mutation) => {
                console.log('name: ' + mutation.value + ', byAction: ' + JSON.stringify(mutation.byAction))
              })
-        
+              
              fooStore.$onAction('getNamePromise', (_, after) => {
                after((res, _this) => {
                  _this.changeName(res)
                })
              })
-        
+              
              fooStore.getNamePromise('Joie', 1000)
              // 1000ms后控制台输出：
              // - 'name: Joie, byAction: [{"storeName":"foo","actionName":"getNamePromise"},{"storeName":"foo","actionName":"changeName"}]'

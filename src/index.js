@@ -357,27 +357,93 @@ const createStore = (storeName, config = {}) => {
     }
   }
 
-  // modifyState 用于修改 state 数据
-  // - 将操作 state 的函数作为第一个参数传入
+  // modifyState 用于修改 state 数据，并对修改进行监听，所有 state 的修改操作都通过 modifyState 进行
+  // - 将操作 state 的函数作为第一个参数传入，如果传入 false 则不修改 state 但强制执行
   // - 将操作的类型字符串作为第二个参数传入
-  // - 如果不是批量修改操作，则将单独修改的值作为第三个参数 value 传入
+  // - 如果不是批量修改操作，则将单独修改的值作为第三个参数 value 传入，用以单独检查该 value 是否
   // - 如果不需要进行检查 state 名，则将 false 作为第三个参数 value 传入
-  // - 它会在该操作前后调用 [监听模块] 相关的函数以及进行 state 名检查
   const modifyState = (modification, type, value) => {
     const preState = deepClone(config.state)
     getChainSnapshots()
     getGettersSnapshots()
     const res = modification ? modification() : undefined
-    const isForce = modification ? false : true
     if (value !== false) {
       checkStateNames(stateProxy)
-      value ? checkTargetProp(value) : checkTargetProp(stateProxy)
+      value !== undefined ? checkTargetProp(value) : checkTargetProp(stateProxy)
     }
-    callStateListeners(preState, type, duringAction, isForce)
-    callGetterListeners(preState, type, duringAction, isForce)
+    const mutationMakers = createMutationMakers(preState, type)
+    const { createStateMutation, createGetterMutation } = mutationMakers
+    callStateListeners(createStateMutation)
+    callGetterListeners(createGetterMutation)
     chainSnapshots = {}
     gettersSnapshots = {}
     return res
+  }
+
+  // createMutationMaker 接收 preState, type, byAction，返回一个 mutation 的生成器
+  const createMutationMakers = (preState, type) => {
+    const _mutation = { storeName, type, byAction: duringAction, preState }
+    return {
+      createStateMutation: (chain, deep, isForce) => {
+        const mutation = deepClone(_mutation)
+        if (chain === '*') return mutation
+        mutation.chain = chain
+        mutation.value = getValueByChain(chain, stateProxy)
+        // chainSnapshots[chain] 是这次变化前的该 chain 对应的引用地址的数据
+        mutation.preValue = chainSnapshots[chain]
+        if (isForce) {
+          mutation.preValue = mutation.value
+          return mutation
+        }
+        if (deep) {
+          mutation.preValue = getValueByChain(chain, preState)
+          // deep 下，函数类型的 preVale 默认是它的对象部分的快照，但还得判断该函数是否被更换了引用地址
+          if (typeof chainSnapshots[chain] === 'function' && chainSnapshots[chain] !== mutation.value) {
+            return mutation
+            // 非函数类型或函数引用地址没有改变，则可以直接比较对象部分是否结构内容相等
+          } else if (!isEqual(mutation.value, mutation.preValue)) return mutation
+        } else {
+          // 非 deep 下，直接比较引用地址是否改变
+          if (mutation.value !== mutation.preValue) return mutation
+        }
+      },
+      createGetterMutation: (getterName, isForce) => {
+        const value = gettersProxy[getterName]
+        const preValue = gettersSnapshots[getterName]
+        if (!isForce && isEqual(value, preValue)) return undefined
+        const mutation = deepClone(_mutation)
+        mutation.name = getterName
+        mutation.value = value
+        mutation.preValue = isForce ? value : preValue
+        return mutation
+      }
+    }
+  }
+
+
+  const createStateMutation = (preState, type, chain, deep) => {
+    const mutation = {
+      storeName,
+      type,
+      byAction: duringAction,
+      preState
+    }
+    if (chain === '*') return mutation
+    mutation.chain = chain
+    mutation.value = getValueByChain(chain, stateProxy)
+    // chainSnapshots[chain] 是这次变化前的该 chain 对应的引用地址的数据
+    mutation.preValue = chainSnapshots[chain]
+    if (deep) {
+      mutation.preValue = getValueByChain(chain, preState)
+      // deep 下，函数类型的 preVale 默认是它的对象部分的快照，但还得判断该函数是否被更换了引用地址
+      if (typeof chainSnapshots[chain] === 'function' && chainSnapshots[chain] !== mutation.value) {
+        return mutation
+        // 非函数类型或函数引用地址没有改变，则可以直接比较对象部分是否结构内容相等
+      } else if (!isEqual(mutation.value, mutation.preValue)) return mutation
+    } else {
+      // 非 deep 下，直接比较引用地址是否改变
+      if (mutation.value !== mutation.preValue) return mutation
+    }
   }
 
   // ↑↑↑ 监听相关模块 ↑↑↑
@@ -388,39 +454,11 @@ const createStore = (storeName, config = {}) => {
   const stateListeners = new Set()
 
   // callStateListeners 需要在 state 可能发生变化时调用，它会判断哪些监听的 state 发生了变化，并执行 stateListeners 中对应的回调函数
-  const callStateListeners = (preState, type, byAction, isForce) => {
+  const callStateListeners = (createStateMutation) => {
     stateListeners.forEach(listenerContainer => {
       const { listener, chain, deep } = listenerContainer
-      const mutation = {
-        storeName,
-        type,
-        byAction,
-        preState
-      }
-      if (chain === '*') {
-        listener(mutation)
-        return
-      }
-      mutation.chain = chain
-      mutation.value = getValueByChain(chain, stateProxy)
-      if (isForce) {
-        mutation.preValue = mutation.value
-        listener(mutation)
-      }
-      if (deep) {
-        mutation.preValue = getValueByChain(chain, preState)
-        // deep下，函数类型的 preVale 默认是它的对象部分的快照，但还得判断该函数是否被更换了引用地址
-        if (typeof chainSnapshots[chain] === 'function' && chainSnapshots[chain] !== mutation.value) {
-          // chainSnapshots[chain] 是这次变化前的该 chain 对应的引用地址的数据
-          // 如果该 chain 的引用地址被改变了，则 preValue 将变成改变前的引用地址并触发监听器
-          mutation.preValue = chainSnapshots[chain]
-          listener(mutation)
-          // 非函数类型或函数引用地址没有改变，则可以直接比较对象部分是否结构内容相等
-        } else if (!isEqual(mutation.value, mutation.preValue)) listener(mutation)
-      } else {
-        mutation.preValue = chainSnapshots[chain]
-        if (mutation.value !== mutation.preValue) listener(mutation)
-      }
+      const mutation = createStateMutation(chain, deep)
+      if (mutation) listener(mutation)
     })
   }
 
@@ -443,7 +481,8 @@ const createStore = (storeName, config = {}) => {
         let listenerContainer = { chain, listener, deep }
         stateListeners.add(listenerContainer)
         if (isImmediate) {
-          modifyState(false, 'initial', false)
+          const mutation = createMutationMakers(stateProxy, 'initial').createStateMutation(chain, deep, true)
+          listener(mutation)
         }
         return () => stateListeners.delete(listenerContainer)
       case 'Array':
@@ -461,23 +500,11 @@ const createStore = (storeName, config = {}) => {
   const getterListeners = new Set()
 
   // callGetterListeners 需要在 state 可能发生变化时调用，它会判断此次变化是否使得监听的 getter 返回值发生了变化，并执行 getterListeners 中对应的回调函数
-  const callGetterListeners = (preState, type, byAction, isForce) => {
+  const callGetterListeners = (createGetterMutation) => {
     getterListeners.forEach(listenerContainer => {
       const { getterName, listener } = listenerContainer
-      const value = gettersProxy[getterName]
-      const preValue = gettersSnapshots[getterName]
-      if (isForce || !isEqual(value, preValue)) {
-        const mutation = {
-          storeName,
-          name: getterName,
-          type,
-          byAction,
-          value,
-          preValue,
-          preState
-        }
-        listener(mutation)
-      }
+      const mutation = createGetterMutation(getterName)
+      if (mutation) listener(mutation)
     })
   }
 
@@ -502,7 +529,10 @@ const createStore = (storeName, config = {}) => {
       case 'String':
         let listenerContainer = { getterName, listener }
         getterListeners.add(listenerContainer)
-        if (isImmediate) modifyState(false, 'initial', false)
+        if (isImmediate) {
+          const mutation = createMutationMakers(stateProxy, 'initial').createGetterMutation(getterName, true)
+          listener(mutation)
+        }
         return () => getterListeners.delete(listenerContainer)
       case 'Array':
         return subscribeInBulk(storeProxy.$onGetter, getterName, listener, isImmediate)
