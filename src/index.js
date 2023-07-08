@@ -106,6 +106,8 @@ const createStore = (storeName, config = {}) => {
         }
       }
     }
+    // 当用户试图操作 state 和其中的对象的 __target__ 属性时抛出 targetEorror
+    const targetEorror = new Error(`The property named '__target__' of state or objects in state is read-only.`)
     // 返回创建的 proxy
     return new Proxy(state, {
       get(target, propName) {
@@ -114,11 +116,13 @@ const createStore = (storeName, config = {}) => {
         return Reflect.get(target, propName)
       },
       set(target, propName, value) {
+        if (propName === '__target__') throw targetEorror
         // 如果修改的新值是对象数据类型的话，也需要为它创建proxy
         value = isObject(value) && !value.__target__ ? createStateProxy(value) : value
         return modifyState(() => Reflect.set(target, propName, value), 'direct', { value })
       },
       deleteProperty(target, propName) {
+        if (propName === '__target__') throw targetEorror
         return modifyState(() => Reflect.deleteProperty(target, propName), 'direct', propName)
       }
     })
